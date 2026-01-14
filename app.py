@@ -16,7 +16,7 @@ from io import BytesIO
 # ============================================
 # CẤU HÌNH API
 # ============================================
-GOOGLE_API_KEY = "AIzaSyD23Rv3vwLOyc44m9ePWAvzzDWzdQjuZjg"
+GOOGLE_API_KEY = ""
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('models/gemini-flash-latest')
 
