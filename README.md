@@ -88,6 +88,18 @@ GOOGLE_API_KEY=your-api-key-here
 - google-generativeai
 - plotly
 - openpyxl (để xuất Excel)
+- python-dotenv
+
+## 🌐 Deploy lên Streamlit Cloud
+
+1. Push code lên GitHub (file `.env` sẽ không bị push)
+2. Truy cập https://share.streamlit.io/ và đăng nhập bằng GitHub
+3. Chọn repo và branch
+4. Vào **Settings > Secrets** và thêm:
+```toml
+GOOGLE_API_KEY = "your-api-key-here"
+```
+5. Bấm **Deploy**
 
 ## Tác giả
 

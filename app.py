@@ -16,15 +16,20 @@ import plotly.express as px
 import plotly.graph_objects as go
 from dotenv import load_dotenv
 
-# Load environment variables từ file .env
+# Load environment variables từ file .env (cho local development)
 load_dotenv()
 
 # ============================================
 # CẤU HÌNH API
 # ============================================
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+# Ưu tiên: Streamlit Secrets (deploy) > Environment Variable (.env local)
+try:
+    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+except:
+    GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+
 if not GOOGLE_API_KEY:
-    st.error("⚠️ Vui lòng cấu hình GOOGLE_API_KEY trong file .env")
+    st.error("⚠️ Vui lòng cấu hình GOOGLE_API_KEY trong file .env hoặc Streamlit Secrets")
     st.stop()
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('models/gemini-flash-latest')
