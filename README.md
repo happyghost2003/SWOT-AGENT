@@ -64,13 +64,21 @@ SWOT AGENT/
 - Đặt tên file rõ ràng (VD: `phuc_long.csv`, `starbucks.csv`)
 - AI sẽ đọc toàn bộ dữ liệu từ file
 
-## ⚙️ Cấu hình API
+## ⚙️ Cấu hình API Key
 
-Ứng dụng sử dụng Google Gemini API. Thay đổi API key trong file `app.py`:
-
-```python
-GOOGLE_API_KEY = "your-api-key-here"
+1. Copy file `.env.example` thành `.env`:
+```bash
+cp .env.example .env
 ```
+
+2. Mở file `.env` và thay API key của bạn:
+```
+GOOGLE_API_KEY=your-api-key-here
+```
+
+3. Lấy API key tại: https://makersuite.google.com/app/apikey
+
+> ⚠️ **Lưu ý:** File `.env` đã được thêm vào `.gitignore` nên sẽ KHÔNG bị push lên GitHub.
 
 ## 📦 Requirements
 
@@ -81,10 +89,7 @@ GOOGLE_API_KEY = "your-api-key-here"
 - plotly
 - openpyxl (để xuất Excel)
 
-## 👨‍💻 Tác giả
+## Tác giả
 
 Phòng AI - SWOT Agent
 
-## 📄 License
-
-MIT License
