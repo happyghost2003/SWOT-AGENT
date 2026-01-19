@@ -12,11 +12,13 @@ import json
 import re
 from datetime import datetime
 from io import BytesIO
+import plotly.express as px
+import plotly.graph_objects as go
 
 # ============================================
 # CẤU HÌNH API
 # ============================================
-GOOGLE_API_KEY = ""
+GOOGLE_API_KEY = "AIzaSyDw_uBs_QUItg2KqiQF9cMu6pHW--pvJR8"
 genai.configure(api_key=GOOGLE_API_KEY)
 model = genai.GenerativeModel('models/gemini-flash-latest')
 
@@ -163,19 +165,31 @@ Cuối cùng, đưa ra block JSON như yêu cầu.
     return call_gemini(prompt)
 
 
-def analyze_competitor_comparison(my_shop, competitor_shop):
+def analyze_competitor_comparison(my_shop, competitor_shop, csv_my_shop="", csv_competitor=""):
     """So sánh SWOT giữa 2 quán"""
+    
+    # Build context từ CSV data
+    csv_context = ""
+    if csv_my_shop:
+        csv_context += f"\n\n📊 DỮ LIỆU CSV QUÁN CỦA BẠN ({my_shop}):\n{csv_my_shop}"
+    if csv_competitor:
+        csv_context += f"\n\n📊 DỮ LIỆU CSV ĐỐI THỦ ({competitor_shop}):\n{csv_competitor}"
+    
     prompt = f"""
 Bạn là chuyên gia phân tích kinh doanh và là một Data Analyst trong lĩnh vực F&B tại Việt Nam.
 
 ⚔️ SO SÁNH ĐỐI THỦ CẠNH TRANH:
 - 🏪 QUÁN CỦA BẠN: {my_shop}
 - 🎯 ĐỐI THỦ: {competitor_shop}
+{csv_context}
 
 YÊU CẦU:
 1. Phân tích SWOT cho CẢ HAI quán
 2. So sánh và đối chiếu điểm mạnh/yếu
 3. Đề xuất chiến lược cạnh tranh
+4. So sánh GIÁ NIÊM YẾT cho các sản phẩm tương tự (VD: Cà phê đen, Cà phê sữa, Trà sữa...)
+5. So sánh ƯU ĐÃI và KHUYẾN MÃI của mỗi quán
+6. Phân tích CHÊNH LỆCH GIẢM GIÁ tại từng địa điểm/chi nhánh
 
 QUAN_TRONG: Trả về một block JSON ở cuối với format:
 ```json
@@ -193,7 +207,8 @@ QUAN_TRONG: Trả về một block JSON ở cuối với format:
             "weaknesses": ["điểm yếu 1", "điểm yếu 2", "điểm yếu 3"],
             "opportunities": ["cơ hội 1", "cơ hội 2", "cơ hội 3"],
             "threats": ["thách thức 1", "thách thức 2", "thách thức 3"]
-        }}
+        }},
+        "promotions": ["ưu đãi 1", "ưu đãi 2", "ưu đãi 3"]
     }},
     "competitor": {{
         "name": "{competitor_shop}",
@@ -208,7 +223,18 @@ QUAN_TRONG: Trả về một block JSON ở cuối với format:
             "weaknesses": ["điểm yếu 1", "điểm yếu 2", "điểm yếu 3"],
             "opportunities": ["cơ hội 1", "cơ hội 2", "cơ hội 3"],
             "threats": ["thách thức 1", "thách thức 2", "thách thức 3"]
-        }}
+        }},
+        "promotions": ["ưu đãi 1", "ưu đãi 2", "ưu đãi 3"]
+    }},
+    "price_comparison": [
+        {{"product": "Cà phê đen", "my_price": "<giá VNĐ>", "competitor_price": "<giá VNĐ>", "difference": "<chênh lệch>", "note": "ghi chú"}},
+        {{"product": "Cà phê sữa", "my_price": "<giá VNĐ>", "competitor_price": "<giá VNĐ>", "difference": "<chênh lệch>", "note": "ghi chú"}},
+        {{"product": "Trà sữa", "my_price": "<giá VNĐ>", "competitor_price": "<giá VNĐ>", "difference": "<chênh lệch>", "note": "ghi chú"}}
+    ],
+    "discount_comparison": {{
+        "my_shop_discounts": ["giảm giá 1", "giảm giá 2"],
+        "competitor_discounts": ["giảm giá 1", "giảm giá 2"],
+        "discount_analysis": "Phân tích chênh lệch giảm giá"
     }},
     "competitive_advantages": ["lợi thế 1", "lợi thế 2", "lợi thế 3"],
     "areas_to_improve": ["cần cải thiện 1", "cần cải thiện 2", "cần cải thiện 3"],
@@ -223,12 +249,24 @@ Bây giờ hãy phân tích chi tiết:
 📕 WEAKNESSES: ...
 📘 OPPORTUNITIES: ...
 📙 THREATS: ...
+💰 ƯU ĐÃI HIỆN TẠI: ...
 
 ## 🎯 PHÂN TÍCH {competitor_shop}:
 📗 STRENGTHS: ...
 📕 WEAKNESSES: ...
 📘 OPPORTUNITIES: ...
 📙 THREATS: ...
+💰 ƯU ĐÃI HIỆN TẠI: ...
+
+## 💵 SO SÁNH GIÁ SẢN PHẨM:
+| Sản phẩm | Giá {my_shop} | Giá {competitor_shop} | Chênh lệch |
+|----------|---------------|----------------------|------------|
+| ...      | ...           | ...                  | ...        |
+
+## 🎁 SO SÁNH KHUYẾN MÃI & GIẢM GIÁ:
+- Ưu đãi của bạn: ...
+- Ưu đãi đối thủ: ...
+- Phân tích chênh lệch: ...
 
 ## ⚔️ SO SÁNH & KẾT LUẬN:
 - Lợi thế cạnh tranh của bạn
@@ -238,6 +276,795 @@ Bây giờ hãy phân tích chi tiết:
 Cuối cùng, đưa ra block JSON như yêu cầu.
 """
     return call_gemini(prompt)
+
+
+def analyze_competitor_auto_detect(all_csv_data):
+    """So sánh SWOT từ nhiều file CSV - AI tự động xác định các quán và phân tích"""
+    
+    prompt = f"""
+Bạn là chuyên gia phân tích kinh doanh và là một Data Analyst trong lĩnh vực F&B tại Việt Nam.
+
+📊 DỮ LIỆU TỪ NHIỀU FILE CSV:
+{all_csv_data}
+
+⚔️ NHIỆM VỤ:
+1. TỰ ĐỘNG XÁC ĐỊNH các quán/thương hiệu khác nhau từ dữ liệu CSV (dựa trên tên file, cột dữ liệu, hoặc nội dung)
+2. Phân tích SWOT cho TẤT CẢ các quán được phát hiện
+3. So sánh và đối chiếu điểm mạnh/yếu giữa các quán
+4. So sánh GIÁ NIÊM YẾT cho các sản phẩm tương tự
+5. So sánh ƯU ĐÃI và KHUYẾN MÃI
+6. Đề xuất chiến lược cạnh tranh
+
+LƯU Ý: Bạn phải TỰ ĐỘNG nhận diện tên các quán từ dữ liệu. Quán đầu tiên được phát hiện sẽ được coi là "quán chính" (my_shop), các quán còn lại là đối thủ.
+
+QUAN_TRONG: Trả về một block JSON ở cuối với format:
+```json
+{{
+    "detected_shops": ["tên quán 1", "tên quán 2", "tên quán 3"],
+    "my_shop": {{
+        "name": "<tên quán chính>",
+        "scores": {{
+            "strengths": <điểm 1-10>,
+            "weaknesses": <điểm 1-10>,
+            "opportunities": <điểm 1-10>,
+            "threats": <điểm 1-10>
+        }},
+        "summary": {{
+            "strengths": ["điểm mạnh 1", "điểm mạnh 2", "điểm mạnh 3"],
+            "weaknesses": ["điểm yếu 1", "điểm yếu 2", "điểm yếu 3"],
+            "opportunities": ["cơ hội 1", "cơ hội 2", "cơ hội 3"],
+            "threats": ["thách thức 1", "thách thức 2", "thách thức 3"]
+        }},
+        "promotions": ["ưu đãi 1", "ưu đãi 2", "ưu đãi 3"]
+    }},
+    "competitor": {{
+        "name": "<tên đối thủ chính>",
+        "scores": {{
+            "strengths": <điểm 1-10>,
+            "weaknesses": <điểm 1-10>,
+            "opportunities": <điểm 1-10>,
+            "threats": <điểm 1-10>
+        }},
+        "summary": {{
+            "strengths": ["điểm mạnh 1", "điểm mạnh 2", "điểm mạnh 3"],
+            "weaknesses": ["điểm yếu 1", "điểm yếu 2", "điểm yếu 3"],
+            "opportunities": ["cơ hội 1", "cơ hội 2", "cơ hội 3"],
+            "threats": ["thách thức 1", "thách thức 2", "thách thức 3"]
+        }},
+        "promotions": ["ưu đãi 1", "ưu đãi 2", "ưu đãi 3"]
+    }},
+    "price_comparison": [
+        {{"product": "Sản phẩm 1", "shop1_price": "<giá>", "shop2_price": "<giá>", "difference": "<chênh lệch>", "note": "ghi chú"}}
+    ],
+    "discount_comparison": {{
+        "my_shop_discounts": ["giảm giá 1", "giảm giá 2"],
+        "competitor_discounts": ["giảm giá 1", "giảm giá 2"],
+        "discount_analysis": "Phân tích chênh lệch giảm giá"
+    }},
+    "competitive_advantages": ["lợi thế 1", "lợi thế 2", "lợi thế 3"],
+    "areas_to_improve": ["cần cải thiện 1", "cần cải thiện 2", "cần cải thiện 3"],
+    "strategies": ["chiến lược 1", "chiến lược 2", "chiến lược 3"]
+}}
+```
+
+Bây giờ hãy phân tích chi tiết:
+
+## 🔍 NHẬN DIỆN CÁC QUÁN:
+(Liệt kê tên các quán được phát hiện từ dữ liệu)
+
+## 🏪 PHÂN TÍCH QUÁN 1 (Quán chính):
+📗 STRENGTHS: ...
+📕 WEAKNESSES: ...
+📘 OPPORTUNITIES: ...
+📙 THREATS: ...
+💰 ƯU ĐÃI HIỆN TẠI: ...
+
+## 🎯 PHÂN TÍCH CÁC ĐỐI THỦ:
+(Phân tích từng quán đối thủ)
+
+## 💵 SO SÁNH GIÁ SẢN PHẨM:
+| Sản phẩm | Quán 1 | Quán 2 | Chênh lệch |
+|----------|--------|--------|------------|
+| ...      | ...    | ...    | ...        |
+
+## 🎁 SO SÁNH KHUYẾN MÃI & GIẢM GIÁ:
+- Ưu đãi các quán...
+- Phân tích chênh lệch...
+
+## ⚔️ SO SÁNH & KẾT LUẬN:
+- Lợi thế cạnh tranh
+- Điểm cần cải thiện
+- Đề xuất chiến lược
+
+Cuối cùng, đưa ra block JSON như yêu cầu.
+"""
+    return call_gemini(prompt)
+
+
+def analyze_competitor_with_my_shop(my_shop_name, all_csv_data):
+    """So sánh SWOT với quán của mình được chỉ định từ nhiều file CSV"""
+    
+    prompt = f"""
+Bạn là chuyên gia phân tích kinh doanh và là một Data Analyst trong lĩnh vực F&B tại Việt Nam.
+
+🏪 QUÁN CỦA TÔI: {my_shop_name}
+
+📊 DỮ LIỆU TỪ NHIỀU FILE CSV:
+{all_csv_data}
+
+⚔️ NHIỆM VỤ:
+1. Xác định dữ liệu nào thuộc về "{my_shop_name}" (quán của tôi) và dữ liệu nào thuộc về các đối thủ
+2. Phân tích SWOT cho quán của tôi và các đối thủ
+3. So sánh và đối chiếu điểm mạnh/yếu
+4. So sánh GIÁ NIÊM YẾT cho các sản phẩm tương tự
+5. So sánh ƯU ĐÃI và KHUYẾN MÃI
+6. Đề xuất chiến lược cạnh tranh cho "{my_shop_name}"
+
+QUAN_TRONG: Trả về một block JSON ở cuối với format:
+```json
+{{
+    "detected_shops": ["tên quán 1", "tên quán 2"],
+    "my_shop": {{
+        "name": "{my_shop_name}",
+        "scores": {{
+            "strengths": <điểm 1-10>,
+            "weaknesses": <điểm 1-10>,
+            "opportunities": <điểm 1-10>,
+            "threats": <điểm 1-10>
+        }},
+        "summary": {{
+            "strengths": ["điểm mạnh 1", "điểm mạnh 2", "điểm mạnh 3"],
+            "weaknesses": ["điểm yếu 1", "điểm yếu 2", "điểm yếu 3"],
+            "opportunities": ["cơ hội 1", "cơ hội 2", "cơ hội 3"],
+            "threats": ["thách thức 1", "thách thức 2", "thách thức 3"]
+        }},
+        "promotions": ["ưu đãi 1", "ưu đãi 2", "ưu đãi 3"]
+    }},
+    "competitor": {{
+        "name": "<tên đối thủ chính>",
+        "scores": {{
+            "strengths": <điểm 1-10>,
+            "weaknesses": <điểm 1-10>,
+            "opportunities": <điểm 1-10>,
+            "threats": <điểm 1-10>
+        }},
+        "summary": {{
+            "strengths": ["điểm mạnh 1", "điểm mạnh 2", "điểm mạnh 3"],
+            "weaknesses": ["điểm yếu 1", "điểm yếu 2", "điểm yếu 3"],
+            "opportunities": ["cơ hội 1", "cơ hội 2", "cơ hội 3"],
+            "threats": ["thách thức 1", "thách thức 2", "thách thức 3"]
+        }},
+        "promotions": ["ưu đãi 1", "ưu đãi 2", "ưu đãi 3"]
+    }},
+    "price_comparison": [
+        {{"product": "Sản phẩm 1", "my_price": "<giá>", "competitor_price": "<giá>", "difference": "<chênh lệch>", "note": "ghi chú"}}
+    ],
+    "discount_comparison": {{
+        "my_shop_discounts": ["giảm giá 1", "giảm giá 2"],
+        "competitor_discounts": ["giảm giá 1", "giảm giá 2"],
+        "discount_analysis": "Phân tích chênh lệch giảm giá"
+    }},
+    "competitive_advantages": ["lợi thế 1", "lợi thế 2", "lợi thế 3"],
+    "areas_to_improve": ["cần cải thiện 1", "cần cải thiện 2", "cần cải thiện 3"],
+    "strategies": ["chiến lược 1", "chiến lược 2", "chiến lược 3"]
+}}
+```
+
+Bây giờ hãy phân tích chi tiết:
+
+## 🏪 PHÂN TÍCH {my_shop_name} (Quán của tôi):
+📗 STRENGTHS: ...
+📕 WEAKNESSES: ...
+📘 OPPORTUNITIES: ...
+📙 THREATS: ...
+💰 ƯU ĐÃI HIỆN TẠI: ...
+
+## 🎯 PHÂN TÍCH CÁC ĐỐI THỦ:
+(Phân tích từng đối thủ được phát hiện)
+
+## 💵 SO SÁNH GIÁ SẢN PHẨM:
+| Sản phẩm | {my_shop_name} | Đối thủ | Chênh lệch |
+|----------|----------------|---------|------------|
+| ...      | ...            | ...     | ...        |
+
+## 🎁 SO SÁNH KHUYẾN MÃI & GIẢM GIÁ:
+- Ưu đãi của bạn: ...
+- Ưu đãi đối thủ: ...
+- Phân tích chênh lệch: ...
+
+## ⚔️ SO SÁNH & KẾT LUẬN:
+- Lợi thế cạnh tranh của bạn
+- Điểm cần cải thiện
+- Đề xuất chiến lược
+
+Cuối cùng, đưa ra block JSON như yêu cầu.
+"""
+    return call_gemini(prompt)
+
+
+def analyze_multi_competitor_with_my_shop(my_shop_name, all_csv_data):
+    """So sánh SWOT nhiều quán với quán của mình được chỉ định - bao gồm xếp hạng"""
+    
+    prompt = f"""
+Bạn là chuyên gia phân tích kinh doanh và là một Data Analyst trong lĩnh vực F&B tại Việt Nam.
+
+🏪 QUÁN CỦA TÔI: {my_shop_name}
+
+📊 DỮ LIỆU TỪ NHIỀU FILE CSV:
+{all_csv_data}
+
+⚔️ NHIỆM VỤ:
+1. Xác định dữ liệu nào thuộc về "{my_shop_name}" (quán của tôi) và dữ liệu nào thuộc về các đối thủ
+2. Phân tích SWOT cho TẤT CẢ các quán
+3. So sánh và đối chiếu điểm mạnh/yếu giữa tất cả
+4. XẾP HẠNG các quán theo tiềm năng cạnh tranh
+5. Đề xuất chiến lược cạnh tranh cho "{my_shop_name}"
+
+QUAN_TRONG: Trả về một block JSON ở cuối với format:
+```json
+{{
+    "detected_shops": ["tên quán 1", "tên quán 2", "tên quán 3"],
+    "my_shop": {{
+        "name": "{my_shop_name}",
+        "is_my_shop": true,
+        "scores": {{
+            "strengths": <điểm 1-10>,
+            "weaknesses": <điểm 1-10>,
+            "opportunities": <điểm 1-10>,
+            "threats": <điểm 1-10>
+        }},
+        "summary": {{
+            "strengths": ["điểm mạnh 1", "điểm mạnh 2", "điểm mạnh 3"],
+            "weaknesses": ["điểm yếu 1", "điểm yếu 2", "điểm yếu 3"],
+            "opportunities": ["cơ hội 1", "cơ hội 2", "cơ hội 3"],
+            "threats": ["thách thức 1", "thách thức 2", "thách thức 3"]
+        }}
+    }},
+    "competitors": [
+        {{
+            "name": "<tên đối thủ 1>",
+            "is_my_shop": false,
+            "scores": {{
+                "strengths": <điểm 1-10>,
+                "weaknesses": <điểm 1-10>,
+                "opportunities": <điểm 1-10>,
+                "threats": <điểm 1-10>
+            }},
+            "summary": {{
+                "strengths": ["điểm mạnh 1", "điểm mạnh 2", "điểm mạnh 3"],
+                "weaknesses": ["điểm yếu 1", "điểm yếu 2", "điểm yếu 3"],
+                "opportunities": ["cơ hội 1", "cơ hội 2", "cơ hội 3"],
+                "threats": ["thách thức 1", "thách thức 2", "thách thức 3"]
+            }}
+        }}
+    ],
+    "ranking": [
+        {{"rank": 1, "name": "<tên quán>", "total_score": <điểm tổng>, "note": "lý do xếp hạng"}},
+        {{"rank": 2, "name": "<tên quán>", "total_score": <điểm tổng>, "note": "lý do xếp hạng"}}
+    ],
+    "competitive_advantages": ["lợi thế 1", "lợi thế 2", "lợi thế 3"],
+    "areas_to_improve": ["cần cải thiện 1", "cần cải thiện 2", "cần cải thiện 3"],
+    "strategies": ["chiến lược 1", "chiến lược 2", "chiến lược 3"]
+}}
+```
+
+Bây giờ hãy phân tích chi tiết:
+
+## 🏪 PHÂN TÍCH {my_shop_name} (Quán của tôi):
+📗 STRENGTHS: ...
+📕 WEAKNESSES: ...
+📘 OPPORTUNITIES: ...
+📙 THREATS: ...
+
+## 🎯 PHÂN TÍCH CÁC ĐỐI THỦ:
+(Phân tích từng đối thủ)
+
+## 🏆 BẢNG XẾP HẠNG:
+| Hạng | Quán | Điểm tổng | Ghi chú |
+|------|------|-----------|---------|
+| ...  | ...  | ...       | ...     |
+
+## ⚔️ SO SÁNH & KẾT LUẬN:
+- Lợi thế cạnh tranh của {my_shop_name}
+- Điểm cần cải thiện
+- Đề xuất chiến lược
+
+Cuối cùng, đưa ra block JSON như yêu cầu.
+"""
+    return call_gemini(prompt)
+
+
+def analyze_multi_competitor_auto_detect(all_csv_data):
+    """So sánh SWOT nhiều quán từ nhiều file CSV - AI tự động xác định các quán và xếp hạng"""
+    
+    prompt = f"""
+Bạn là chuyên gia phân tích kinh doanh và là một Data Analyst trong lĩnh vực F&B tại Việt Nam.
+
+📊 DỮ LIỆU TỪ NHIỀU FILE CSV:
+{all_csv_data}
+
+⚔️ NHIỆM VỤ:
+1. TỰ ĐỘNG XÁC ĐỊNH tất cả các quán/thương hiệu khác nhau từ dữ liệu CSV (dựa trên tên file, cột dữ liệu, hoặc nội dung)
+2. Phân tích SWOT cho TẤT CẢ các quán được phát hiện
+3. So sánh và đối chiếu điểm mạnh/yếu giữa tất cả
+4. XẾP HẠNG các quán theo tiềm năng cạnh tranh
+5. Đề xuất chiến lược cạnh tranh
+
+LƯU Ý: Bạn phải TỰ ĐỘNG nhận diện tên các quán từ dữ liệu. Quán đầu tiên được phát hiện sẽ được coi là "quán chính" (my_shop), các quán còn lại là đối thủ.
+
+QUAN_TRONG: Trả về một block JSON ở cuối với format:
+```json
+{{
+    "detected_shops": ["tên quán 1", "tên quán 2", "tên quán 3"],
+    "my_shop": {{
+        "name": "<tên quán chính>",
+        "is_my_shop": true,
+        "scores": {{
+            "strengths": <điểm 1-10>,
+            "weaknesses": <điểm 1-10>,
+            "opportunities": <điểm 1-10>,
+            "threats": <điểm 1-10>
+        }},
+        "summary": {{
+            "strengths": ["điểm mạnh 1", "điểm mạnh 2", "điểm mạnh 3"],
+            "weaknesses": ["điểm yếu 1", "điểm yếu 2", "điểm yếu 3"],
+            "opportunities": ["cơ hội 1", "cơ hội 2", "cơ hội 3"],
+            "threats": ["thách thức 1", "thách thức 2", "thách thức 3"]
+        }}
+    }},
+    "competitors": [
+        {{
+            "name": "<tên đối thủ 1>",
+            "is_my_shop": false,
+            "scores": {{
+                "strengths": <điểm 1-10>,
+                "weaknesses": <điểm 1-10>,
+                "opportunities": <điểm 1-10>,
+                "threats": <điểm 1-10>
+            }},
+            "summary": {{
+                "strengths": ["điểm mạnh 1", "điểm mạnh 2", "điểm mạnh 3"],
+                "weaknesses": ["điểm yếu 1", "điểm yếu 2", "điểm yếu 3"],
+                "opportunities": ["cơ hội 1", "cơ hội 2", "cơ hội 3"],
+                "threats": ["thách thức 1", "thách thức 2", "thách thức 3"]
+            }}
+        }}
+    ],
+    "ranking": [
+        {{"rank": 1, "name": "<tên quán>", "total_score": <điểm tổng>, "note": "lý do xếp hạng"}},
+        {{"rank": 2, "name": "<tên quán>", "total_score": <điểm tổng>, "note": "lý do xếp hạng"}}
+    ],
+    "competitive_advantages": ["lợi thế 1", "lợi thế 2", "lợi thế 3"],
+    "areas_to_improve": ["cần cải thiện 1", "cần cải thiện 2", "cần cải thiện 3"],
+    "strategies": ["chiến lược 1", "chiến lược 2", "chiến lược 3"]
+}}
+```
+
+Bây giờ hãy phân tích chi tiết:
+
+## 🔍 NHẬN DIỆN CÁC QUÁN:
+(Liệt kê tên các quán được phát hiện từ dữ liệu)
+
+## 🏪 PHÂN TÍCH QUÁN 1 (Quán chính):
+📗 STRENGTHS: ...
+📕 WEAKNESSES: ...
+📘 OPPORTUNITIES: ...
+📙 THREATS: ...
+
+## 🎯 PHÂN TÍCH CÁC ĐỐI THỦ:
+(Phân tích từng quán đối thủ)
+
+## 🏆 BẢNG XẾP HẠNG:
+| Hạng | Quán | Điểm tổng | Ghi chú |
+|------|------|-----------|---------|
+| ...  | ...  | ...       | ...     |
+
+## ⚔️ SO SÁNH & KẾT LUẬN:
+- Lợi thế cạnh tranh
+- Điểm cần cải thiện
+- Đề xuất chiến lược
+
+Cuối cùng, đưa ra block JSON như yêu cầu.
+"""
+    return call_gemini(prompt)
+
+
+def analyze_multi_competitor_comparison(my_shop, competitors, csv_data=None):
+    """So sánh SWOT giữa quán của bạn và nhiều đối thủ"""
+    
+    # Build danh sách đối thủ
+    competitors_list = "\n".join([f"  {i+1}. {comp}" for i, comp in enumerate(competitors)])
+    
+    # Build context từ CSV data
+    csv_context = ""
+    if csv_data:
+        if csv_data.get("my_shop"):
+            csv_context += f"\n\n📊 DỮ LIỆU CSV QUÁN CỦA BẠN ({my_shop}):\n{csv_data['my_shop']}"
+        for i, comp in enumerate(competitors):
+            if csv_data.get(f"competitor_{i}"):
+                csv_context += f"\n\n📊 DỮ LIỆU CSV ĐỐI THỦ ({comp}):\n{csv_data[f'competitor_{i}']}"
+    
+    prompt = f"""
+Bạn là chuyên gia phân tích kinh doanh và là một Data Analyst trong lĩnh vực F&B tại Việt Nam.
+
+⚔️ SO SÁNH NHIỀU ĐỐI THỦ CẠNH TRANH:
+- 🏪 QUÁN CỦA BẠN: {my_shop}
+- 🎯 CÁC ĐỐI THỦ:
+{competitors_list}
+{csv_context}
+
+YÊU CẦU:
+1. Phân tích SWOT cho TẤT CẢ các quán (quán của bạn + các đối thủ)
+2. So sánh và đối chiếu điểm mạnh/yếu giữa tất cả
+3. Xếp hạng các quán theo tiềm năng cạnh tranh
+4. Đề xuất chiến lược cạnh tranh cho quán của bạn
+
+QUAN_TRONG: Trả về một block JSON ở cuối với format:
+```json
+{{
+    "my_shop": {{
+        "name": "{my_shop}",
+        "is_my_shop": true,
+        "scores": {{
+            "strengths": <điểm 1-10>,
+            "weaknesses": <điểm 1-10>,
+            "opportunities": <điểm 1-10>,
+            "threats": <điểm 1-10>
+        }},
+        "summary": {{
+            "strengths": ["điểm mạnh 1", "điểm mạnh 2", "điểm mạnh 3"],
+            "weaknesses": ["điểm yếu 1", "điểm yếu 2", "điểm yếu 3"],
+            "opportunities": ["cơ hội 1", "cơ hội 2", "cơ hội 3"],
+            "threats": ["thách thức 1", "thách thức 2", "thách thức 3"]
+        }}
+    }},
+    "competitors": [
+        {{
+            "name": "<tên đối thủ 1>",
+            "is_my_shop": false,
+            "scores": {{
+                "strengths": <điểm 1-10>,
+                "weaknesses": <điểm 1-10>,
+                "opportunities": <điểm 1-10>,
+                "threats": <điểm 1-10>
+            }},
+            "summary": {{
+                "strengths": ["điểm mạnh 1", "điểm mạnh 2", "điểm mạnh 3"],
+                "weaknesses": ["điểm yếu 1", "điểm yếu 2", "điểm yếu 3"],
+                "opportunities": ["cơ hội 1", "cơ hội 2", "cơ hội 3"],
+                "threats": ["thách thức 1", "thách thức 2", "thách thức 3"]
+            }}
+        }}
+    ],
+    "ranking": [
+        {{"rank": 1, "name": "<tên quán>", "total_score": <điểm tổng>, "note": "lý do xếp hạng"}},
+        {{"rank": 2, "name": "<tên quán>", "total_score": <điểm tổng>, "note": "lý do xếp hạng"}}
+    ],
+    "competitive_advantages": ["lợi thế 1", "lợi thế 2", "lợi thế 3"],
+    "areas_to_improve": ["cần cải thiện 1", "cần cải thiện 2", "cần cải thiện 3"],
+    "strategies": ["chiến lược 1", "chiến lược 2", "chiến lược 3"]
+}}
+```
+
+Bây giờ hãy phân tích chi tiết:
+
+## 🏪 PHÂN TÍCH {my_shop} (QUÁN CỦA BẠN):
+📗 STRENGTHS: ...
+📕 WEAKNESSES: ...
+📘 OPPORTUNITIES: ...
+📙 THREATS: ...
+
+## 🎯 PHÂN TÍCH CÁC ĐỐI THỦ:
+(Phân tích từng đối thủ)
+
+## 🏆 BẢNG XẾP HẠNG:
+| Hạng | Quán | Điểm tổng | Ghi chú |
+|------|------|-----------|---------|
+| ...  | ...  | ...       | ...     |
+
+## ⚔️ SO SÁNH & KẾT LUẬN:
+- Lợi thế cạnh tranh của bạn
+- Điểm cần cải thiện
+- Đề xuất chiến lược
+
+Cuối cùng, đưa ra block JSON như yêu cầu.
+"""
+    return call_gemini(prompt)
+
+
+def extract_multi_comparison_json(response_text):
+    """Trích xuất JSON so sánh nhiều quán từ response"""
+    try:
+        json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
+        if json_match:
+            return json.loads(json_match.group(1))
+    except:
+        pass
+    
+    # Default fallback
+    return {
+        "my_shop": {
+            "name": "Quán của bạn",
+            "is_my_shop": True,
+            "scores": {"strengths": 7, "weaknesses": 5, "opportunities": 6, "threats": 4},
+            "summary": {
+                "strengths": ["Thương hiệu", "Vị trí", "Menu"],
+                "weaknesses": ["Giá", "Không gian", "Phục vụ"],
+                "opportunities": ["Mở rộng", "Online", "Marketing"],
+                "threats": ["Cạnh tranh", "Chi phí", "Xu hướng"]
+            }
+        },
+        "competitors": [],
+        "ranking": [],
+        "competitive_advantages": ["Chất lượng cao hơn", "Dịch vụ tốt hơn"],
+        "areas_to_improve": ["Giá cả cạnh tranh", "Marketing mạnh hơn"],
+        "strategies": ["Tập trung chất lượng", "Khuyến mãi thông minh", "Xây dựng cộng đồng"]
+    }
+
+
+def display_multi_comparison_charts(comparison_data, my_shop_name):
+    """Hiển thị biểu đồ so sánh nhiều quán"""
+    
+    my_shop = comparison_data.get("my_shop", {})
+    competitors = comparison_data.get("competitors", [])
+    ranking = comparison_data.get("ranking", [])
+    
+    # Thu thập tất cả các quán
+    all_shops = [my_shop] + competitors
+    
+    # ===== BIỂU ĐỒ SO SÁNH ĐIỂM =====
+    st.subheader("📊 Biểu đồ so sánh SWOT tất cả các quán")
+    
+    # Chuẩn bị data cho chart
+    chart_data = {
+        "Quán": [],
+        "Strengths": [],
+        "Weaknesses": [],
+        "Opportunities": [],
+        "Threats": []
+    }
+    
+    for shop in all_shops:
+        name = shop.get("name", "Unknown")
+        if shop.get("is_my_shop"):
+            name = f"🏪 {name} (Bạn)"
+        scores = shop.get("scores", {})
+        chart_data["Quán"].append(name)
+        chart_data["Strengths"].append(scores.get("strengths", 5))
+        chart_data["Weaknesses"].append(scores.get("weaknesses", 5))
+        chart_data["Opportunities"].append(scores.get("opportunities", 5))
+        chart_data["Threats"].append(scores.get("threats", 5))
+    
+    comparison_df = pd.DataFrame(chart_data)
+    
+    # Biểu đồ cột đứng với Plotly
+    df_melted = comparison_df.melt(id_vars=["Quán"], var_name="Yếu tố", value_name="Điểm")
+    fig = px.bar(
+        df_melted,
+        x="Quán",
+        y="Điểm",
+        color="Yếu tố",
+        barmode="group",
+        title="So sánh SWOT tất cả các quán",
+        color_discrete_map={
+            "Strengths": "#10b981",
+            "Weaknesses": "#ef4444", 
+            "Opportunities": "#3b82f6",
+            "Threats": "#f59e0b"
+        }
+    )
+    fig.update_layout(
+        xaxis_title="",
+        yaxis_title="Điểm số (1-10)",
+        yaxis_range=[0, 10],
+        legend_title="Yếu tố SWOT"
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # ===== METRICS CHO TỪNG QUÁN =====
+    st.subheader("📈 Điểm số chi tiết từng quán")
+    
+    # Chia cột động theo số quán
+    num_shops = len(all_shops)
+    cols = st.columns(min(num_shops, 4))  # Tối đa 4 cột
+    
+    for idx, shop in enumerate(all_shops):
+        col_idx = idx % len(cols)
+        with cols[col_idx]:
+            name = shop.get("name", "Unknown")
+            is_mine = shop.get("is_my_shop", False)
+            scores = shop.get("scores", {})
+            
+            if is_mine:
+                st.markdown(f"### 🏪 {name}")
+                st.caption("(Quán của bạn)")
+            else:
+                st.markdown(f"### 🎯 {name}")
+            
+            st.metric("💪 Strengths", f"{scores.get('strengths', 5)}/10")
+            st.metric("⚠️ Weaknesses", f"{scores.get('weaknesses', 5)}/10")
+            st.metric("🚀 Opportunities", f"{scores.get('opportunities', 5)}/10")
+            st.metric("⚡ Threats", f"{scores.get('threats', 5)}/10")
+            
+            # Điểm tổng
+            total = (scores.get('strengths', 5) + scores.get('opportunities', 5) 
+                    - scores.get('weaknesses', 5) - scores.get('threats', 5) + 20) / 4
+            st.metric("📊 Điểm tổng", f"{total:.1f}/10")
+    
+    # ===== BẢNG XẾP HẠNG =====
+    if ranking:
+        st.markdown("---")
+        st.subheader("🏆 Bảng xếp hạng cạnh tranh")
+        
+        ranking_df = pd.DataFrame(ranking)
+        
+        # Highlight quán của bạn trong bảng
+        def highlight_my_shop(row):
+            if row['name'] == my_shop_name:
+                return ['background-color: #e6f3ff'] * len(row)
+            return [''] * len(row)
+        
+        # Rename columns
+        ranking_df = ranking_df.rename(columns={
+            'rank': '🏅 Hạng',
+            'name': '🏪 Quán',
+            'total_score': '📊 Điểm',
+            'note': '📝 Ghi chú'
+        })
+        
+        st.dataframe(ranking_df, use_container_width=True)
+    
+    # ===== MA TRẬN SWOT CHO TỪNG QUÁN =====
+    st.markdown("---")
+    st.subheader("🎯 Ma trận SWOT chi tiết")
+    
+    # Tabs cho từng quán
+    shop_tabs = st.tabs([f"{'🏪' if shop.get('is_my_shop') else '🎯'} {shop.get('name', 'Unknown')}" for shop in all_shops])
+    
+    for tab, shop in zip(shop_tabs, all_shops):
+        with tab:
+            summary = shop.get("summary", {})
+            
+            c1, c2 = st.columns(2)
+            
+            with c1:
+                st.markdown("""
+                <div class="swot-box strength-box">
+                    <h4>💪 STRENGTHS</h4>
+                </div>
+                """, unsafe_allow_html=True)
+                for item in summary.get('strengths', [])[:3]:
+                    st.markdown(f"✅ {item}")
+                
+                st.markdown("""
+                <div class="swot-box opportunity-box">
+                    <h4>🚀 OPPORTUNITIES</h4>
+                </div>
+                """, unsafe_allow_html=True)
+                for item in summary.get('opportunities', [])[:3]:
+                    st.markdown(f"🎯 {item}")
+            
+            with c2:
+                st.markdown("""
+                <div class="swot-box weakness-box">
+                    <h4>⚠️ WEAKNESSES</h4>
+                </div>
+                """, unsafe_allow_html=True)
+                for item in summary.get('weaknesses', [])[:3]:
+                    st.markdown(f"⚠️ {item}")
+                
+                st.markdown("""
+                <div class="swot-box threat-box">
+                    <h4>⚡ THREATS</h4>
+                </div>
+                """, unsafe_allow_html=True)
+                for item in summary.get('threats', [])[:3]:
+                    st.markdown(f"🔥 {item}")
+    
+    # ===== KẾT LUẬN & CHIẾN LƯỢC =====
+    st.markdown("---")
+    st.subheader("🎯 Kết luận và Chiến lược")
+    
+    adv_col, imp_col = st.columns(2)
+    with adv_col:
+        st.markdown("#### ✅ Lợi thế của bạn")
+        for adv in comparison_data.get("competitive_advantages", []):
+            st.markdown(f"- {adv}")
+    
+    with imp_col:
+        st.markdown("#### ⚠️ Cần cải thiện")
+        for imp in comparison_data.get("areas_to_improve", []):
+            st.markdown(f"- {imp}")
+    
+    st.markdown("#### 💡 Đề xuất chiến lược")
+    for idx, strat in enumerate(comparison_data.get("strategies", []), 1):
+        st.success(f"**{idx}.** {strat}")
+    
+    # ===== EXPORT EXCEL =====
+    st.markdown("---")
+    st.subheader("📥 Xuất kết quả so sánh")
+    
+    excel_buffer = BytesIO()
+    
+    # Sheet 1: Điểm so sánh tổng hợp
+    scores_list = []
+    for shop in all_shops:
+        scores = shop.get("scores", {})
+        total = (scores.get('strengths', 5) + scores.get('opportunities', 5) 
+                - scores.get('weaknesses', 5) - scores.get('threats', 5) + 20) / 4
+        scores_list.append({
+            "Shop": shop.get("name", "Unknown"),
+            "Type": "Quán của bạn" if shop.get("is_my_shop") else "Đối thủ",
+            "Strengths": scores.get("strengths", 5),
+            "Weaknesses": scores.get("weaknesses", 5),
+            "Opportunities": scores.get("opportunities", 5),
+            "Threats": scores.get("threats", 5),
+            "Total_Score": round(total, 1),
+            "Analyzed_Date": datetime.now().strftime("%Y-%m-%d")
+        })
+    scores_df = pd.DataFrame(scores_list)
+    
+    # Sheet 2: Chi tiết SWOT
+    details_list = []
+    for shop in all_shops:
+        summary = shop.get("summary", {})
+        for cat, items in summary.items():
+            category_vn = {
+                'strengths': 'Điểm mạnh',
+                'weaknesses': 'Điểm yếu', 
+                'opportunities': 'Cơ hội',
+                'threats': 'Thách thức'
+            }.get(cat, cat)
+            for idx, item in enumerate(items[:5], 1):
+                details_list.append({
+                    "Shop": shop.get("name", "Unknown"),
+                    "Type": "Quán của bạn" if shop.get("is_my_shop") else "Đối thủ",
+                    "Category": cat.capitalize(),
+                    "Category_VN": category_vn,
+                    "Order": idx,
+                    "Detail": item
+                })
+    details_df = pd.DataFrame(details_list)
+    
+    # Sheet 3: Bảng xếp hạng
+    ranking_export_df = pd.DataFrame(ranking) if ranking else pd.DataFrame()
+    
+    # Sheet 4: Chiến lược
+    strategy_df = pd.DataFrame({
+        "Type": ["Lợi thế"] * len(comparison_data.get("competitive_advantages", [])) + 
+                ["Cần cải thiện"] * len(comparison_data.get("areas_to_improve", [])) +
+                ["Chiến lược"] * len(comparison_data.get("strategies", [])),
+        "Content": comparison_data.get("competitive_advantages", []) + 
+                   comparison_data.get("areas_to_improve", []) +
+                   comparison_data.get("strategies", [])
+    })
+    
+    with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+        scores_df.to_excel(writer, sheet_name='All_Scores', index=False)
+        details_df.to_excel(writer, sheet_name='SWOT_Details', index=False)
+        if not ranking_export_df.empty:
+            ranking_export_df.to_excel(writer, sheet_name='Ranking', index=False)
+        strategy_df.to_excel(writer, sheet_name='Strategies', index=False)
+    
+    excel_buffer.seek(0)
+    
+    exp_col1, exp_col2 = st.columns(2)
+    with exp_col1:
+        st.download_button(
+            label="📊 Tải Excel So Sánh (Power BI)",
+            data=excel_buffer,
+            file_name=f"swot_multi_comparison_{my_shop_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    
+    with exp_col2:
+        json_str = json.dumps(comparison_data, ensure_ascii=False, indent=2)
+        st.download_button(
+            label="📋 Tải JSON",
+            data=json_str,
+            file_name=f"swot_multi_comparison_{my_shop_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+            mime="application/json"
+        )
 
 
 def analyze_specific_branch(brand_name, branch_location, csv_summary=""):
@@ -379,7 +1206,7 @@ def display_branch_charts(branch_data, brand_name, branch_location):
     
     with col1:
         chart_data = pd.DataFrame({
-            'Yếu tố': ['💪 Strengths', '⚠️ Weaknesses', '🚀 Opportunities', '⚡ Threats'],
+            'Yếu tố': ['Strengths', 'Weaknesses', 'Opportunities', 'Threats'],
             'Điểm': [
                 scores.get('strengths', 7),
                 scores.get('weaknesses', 5),
@@ -387,7 +1214,20 @@ def display_branch_charts(branch_data, brand_name, branch_location):
                 scores.get('threats', 4)
             ]
         })
-        st.bar_chart(chart_data.set_index('Yếu tố'))
+        fig = px.bar(
+            chart_data,
+            x='Yếu tố',
+            y='Điểm',
+            color='Yếu tố',
+            color_discrete_map={
+                "Strengths": "#10b981",
+                "Weaknesses": "#ef4444", 
+                "Opportunities": "#3b82f6",
+                "Threats": "#f59e0b"
+            }
+        )
+        fig.update_layout(yaxis_range=[0, 10], showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
     
     with col2:
         m1, m2 = st.columns(2)
@@ -633,7 +1473,7 @@ def display_swot_charts(swot_data, shop_name):
     
     with col1:
         chart_data = pd.DataFrame({
-            'Yếu tố': ['💪 Strengths', '⚠️ Weaknesses', '🚀 Opportunities', '⚡ Threats'],
+            'Yếu tố': ['Strengths', 'Weaknesses', 'Opportunities', 'Threats'],
             'Điểm': [
                 scores.get('strengths', 7),
                 scores.get('weaknesses', 5),
@@ -641,7 +1481,20 @@ def display_swot_charts(swot_data, shop_name):
                 scores.get('threats', 4)
             ]
         })
-        st.bar_chart(chart_data.set_index('Yếu tố'))
+        fig = px.bar(
+            chart_data,
+            x='Yếu tố',
+            y='Điểm',
+            color='Yếu tố',
+            color_discrete_map={
+                "Strengths": "#10b981",
+                "Weaknesses": "#ef4444", 
+                "Opportunities": "#3b82f6",
+                "Threats": "#f59e0b"
+            }
+        )
+        fig.update_layout(yaxis_range=[0, 10], showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
     
     with col2:
         m1, m2 = st.columns(2)
@@ -834,7 +1687,7 @@ st.markdown('<h1 class="main-header">🔎 Đặc Vụ SWOT của Phòng AI 🕵�
 st.markdown('<p style="text-align: center; color: #888;">Phân Tích Quán </p>', unsafe_allow_html=True)
 
 # Tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["📝 Nhập tên quán", "📁 Phân tích CSV", "🔗 Kết hợp", "⚔️ So sánh đối thủ", "🔍 Tìm kiếm chuyên sâu"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📝 Nhập tên quán", "📁 Phân tích CSV", "🔗 Kết hợp", "⚔️ So sánh đối thủ", "📊 So sánh nhiều quán", "🔍 Tìm kiếm chuyên sâu"])
 
 with tab1:
     st.subheader("Nhập tên quán")
@@ -862,24 +1715,44 @@ with tab1:
 
 with tab2:
     st.subheader("Phân tích từ file CSV")
-    st.info("📁 Đặt file CSV vào thư mục `data/` để phân tích")
+    st.info("📁 Đặt file CSV vào thư mục `data/` hoặc upload nhiều file CSV để phân tích")
     
-    uploaded_file = st.file_uploader("Hoặc upload file CSV:", type=['csv'])
+    uploaded_files = st.file_uploader("Hoặc upload file CSV (có thể chọn nhiều file):", type=['csv'], accept_multiple_files=True)
     
-    if uploaded_file:
-        df = pd.read_csv(uploaded_file)
-        st.dataframe(df.head(10))
+    if uploaded_files:
+        st.success(f"✅ Đã upload {len(uploaded_files)} file CSV")
+        
+        # Đọc và hiển thị từng file
+        all_dataframes = []
+        all_file_info = []
+        
+        for uploaded_file in uploaded_files:
+            try:
+                df = pd.read_csv(uploaded_file)
+                all_dataframes.append(df)
+                all_file_info.append({
+                    "file": uploaded_file.name,
+                    "rows": len(df),
+                    "columns": list(df.columns)
+                })
+                with st.expander(f"📄 {uploaded_file.name} ({len(df)} dòng)"):
+                    st.dataframe(df.head(10))
+            except Exception as e:
+                st.error(f"❌ Lỗi đọc file {uploaded_file.name}: {e}")
         
         if st.button("🚀 Phân tích SWOT từ file", key="btn2"):
             with st.spinner("⏳ Đang phân tích..."):
                 try:
-                    summary = f"📊 DỮ LIỆU TỪ CSV:\n"
-                    summary += f"Số dòng: {len(df)}\n"
-                    summary += f"Các cột: {', '.join(df.columns)}\n"
-                    for col in df.columns:
-                        if df[col].dtype in ['int64', 'float64']:
-                            summary += f"- {col}: min={df[col].min()}, max={df[col].max()}, avg={df[col].mean():.0f}\n"
-                    summary += f"Mẫu dữ liệu:\n{df.head(5).to_string()}\n"
+                    # Gộp summary từ tất cả các file
+                    summary = f"📊 DỮ LIỆU TỪ {len(all_dataframes)} FILE CSV:\n"
+                    for i, (df, info) in enumerate(zip(all_dataframes, all_file_info)):
+                        summary += f"\n--- File {i+1}: {info['file']} ---\n"
+                        summary += f"Số dòng: {info['rows']}\n"
+                        summary += f"Các cột: {', '.join(info['columns'])}\n"
+                        for col in df.columns:
+                            if df[col].dtype in ['int64', 'float64']:
+                                summary += f"- {col}: min={df[col].min()}, max={df[col].max()}, avg={df[col].mean():.0f}\n"
+                        summary += f"Mẫu dữ liệu:\n{df.head(5).to_string()}\n"
                     
                     result = analyze_swot_with_scores("Quán từ CSV", summary)
                     swot_data = extract_json_from_response(result)
@@ -944,20 +1817,66 @@ with tab3:
 
 with tab4:
     st.subheader("⚔️ So sánh với đối thủ cạnh tranh")
-    st.info("Nhập tên quán của bạn và đối thủ để AI phân tích so sánh SWOT")
+    st.info("Nhập tên quán của bạn, sau đó upload tất cả file CSV (cả quán mình và đối thủ). AI sẽ so sánh SWOT giữa các quán.")
     
-    col_input1, col_input2 = st.columns(2)
-    with col_input1:
-        my_shop_name = st.text_input("🏪 Quán của bạn:", placeholder="Ví dụ: Highlands Coffee...", key="my_shop")
-    with col_input2:
-        competitor_name = st.text_input("🎯 Đối thủ:", placeholder="Ví dụ: The Coffee House...", key="competitor")
+    # Input tên quán của mình
+    my_shop_name_input = st.text_input("🏪 Tên quán của bạn:", placeholder="Ví dụ: Phúc Long, Highlands Coffee...", key="my_shop_compare")
+    
+    # Upload nhiều file CSV chung
+    all_csv_files = st.file_uploader(
+        "📁 Upload tất cả file CSV (có thể chọn nhiều file):", 
+        type=['csv'], 
+        accept_multiple_files=True,
+        key="compare_csv"
+    )
+    
+    # Xử lý CSV data nếu có
+    all_csv_summary = ""
+    all_file_names = []
+    
+    if all_csv_files:
+        st.success(f"✅ Đã upload {len(all_csv_files)} file CSV")
+        
+        for uploaded_file in all_csv_files:
+            try:
+                df = pd.read_csv(uploaded_file)
+                all_file_names.append(uploaded_file.name)
+                with st.expander(f"📄 {uploaded_file.name} ({len(df)} dòng)"):
+                    st.dataframe(df.head(15))
+                
+                # Tạo summary cho mỗi file - lấy NHIỀU DATA hơn
+                all_csv_summary += f"\n\n========== FILE: {uploaded_file.name} ==========\n"
+                all_csv_summary += f"📁 Tên file: {uploaded_file.name}\n"
+                all_csv_summary += f"Số dòng: {len(df)}\n"
+                all_csv_summary += f"Các cột: {', '.join(df.columns)}\n"
+                for col in df.columns:
+                    if df[col].dtype in ['int64', 'float64']:
+                        all_csv_summary += f"- {col}: min={df[col].min()}, max={df[col].max()}, avg={df[col].mean():.0f}\n"
+                # Lấy TOÀN BỘ dữ liệu từ file
+                all_csv_summary += f"\nDỮ LIỆU CHI TIẾT (TOÀN BỘ {len(df)} DÒNG):\n{df.to_string()}\n"
+            except Exception as e:
+                st.error(f"❌ Lỗi đọc file {uploaded_file.name}: {e}")
+        
+        # Hiển thị tất cả tên file đã upload
+        if all_file_names:
+            st.info(f"📋 Các file đã upload: {', '.join(all_file_names)}")
     
     if st.button("⚔️ Phân tích so sánh", key="btn_compare"):
-        if my_shop_name and competitor_name:
+        if my_shop_name_input and all_csv_files:
             with st.spinner("⏳ Đang phân tích so sánh..."):
                 try:
-                    result = analyze_competitor_comparison(my_shop_name, competitor_name)
+                    # Gọi hàm phân tích với tên quán của mình và tất cả data
+                    result = analyze_competitor_with_my_shop(my_shop_name_input, all_csv_summary)
                     comparison_data = extract_comparison_json(result)
+                    
+                    # Lấy tên quán từ input hoặc AI response
+                    my_shop_name = my_shop_name_input
+                    competitor_name = comparison_data.get("competitor", {}).get("name", "Đối thủ")
+                    
+                    # Hiển thị các quán được phát hiện
+                    detected_shops = comparison_data.get("detected_shops", [])
+                    if detected_shops:
+                        st.success(f"🔍 AI đã nhận diện: {', '.join(detected_shops)}")
                     
                     # ===== BIỂU ĐỒ SO SÁNH =====
                     st.markdown("---")
@@ -983,7 +1902,23 @@ with tab4:
                         ]
                     })
                     
-                    st.bar_chart(comparison_df.set_index("Yếu tố"))
+                    # Biểu đồ cột đứng với Plotly
+                    fig = px.bar(
+                        comparison_df, 
+                        x="Yếu tố", 
+                        y=[my_shop_name, competitor_name],
+                        barmode="group",
+                        title="So sánh SWOT",
+                        labels={"value": "Điểm số", "variable": "Quán"},
+                        color_discrete_sequence=["#667eea", "#f59e0b"]
+                    )
+                    fig.update_layout(
+                        xaxis_title="Yếu tố SWOT",
+                        yaxis_title="Điểm số (1-10)",
+                        yaxis_range=[0, 10],
+                        legend_title="Quán"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
                     
                     # Metrics so sánh
                     st.subheader("📈 Điểm số chi tiết")
@@ -1104,9 +2039,97 @@ with tab4:
                 except Exception as e:
                     st.error(f"❌ Lỗi: {e}")
         else:
-            st.warning("Vui lòng nhập tên cả 2 quán!")
+            if not my_shop_name_input:
+                st.warning("Vui lòng nhập tên quán của bạn!")
+            elif not all_csv_files:
+                st.warning("Vui lòng upload ít nhất 1 file CSV!")
 
 with tab5:
+    st.subheader("📊 So sánh SWOT nhiều quán cùng lúc")
+    st.info("""
+    Nhập tên quán của bạn, sau đó upload tất cả file CSV (bao gồm cả quán mình và các đối thủ).
+    AI sẽ so sánh SWOT, xếp hạng, và đề xuất chiến lược.
+    """)
+    
+    # Input tên quán của mình
+    my_shop_multi_input = st.text_input("🏪 Tên quán của bạn:", placeholder="Ví dụ: Phúc Long, Highlands Coffee...", key="my_shop_multi")
+    
+    # CHỈ 1 FILE UPLOADER DUY NHẤT
+    all_csv_multi = st.file_uploader(
+        "📁 Upload tất cả file CSV (có thể chọn nhiều file):", 
+        type=['csv'], 
+        accept_multiple_files=True,
+        key="multi_csv_all"
+    )
+    
+    all_csv_multi_summary = ""
+    all_file_names_multi = []
+    
+    if all_csv_multi:
+        st.success(f"✅ Đã upload {len(all_csv_multi)} file CSV")
+        
+        for uploaded_file in all_csv_multi:
+            try:
+                df = pd.read_csv(uploaded_file)
+                all_file_names_multi.append(uploaded_file.name)
+                with st.expander(f"📄 {uploaded_file.name} ({len(df)} dòng)"):
+                    st.dataframe(df.head(15))
+                
+                # Tạo summary cho mỗi file - lấy NHIỀU DATA hơn
+                all_csv_multi_summary += f"\n\n========== FILE: {uploaded_file.name} ==========\n"
+                all_csv_multi_summary += f"📁 Tên file: {uploaded_file.name}\n"
+                all_csv_multi_summary += f"Số dòng: {len(df)}\n"
+                all_csv_multi_summary += f"Các cột: {', '.join(df.columns)}\n"
+                for col in df.columns:
+                    if df[col].dtype in ['int64', 'float64']:
+                        all_csv_multi_summary += f"- {col}: min={df[col].min()}, max={df[col].max()}, avg={df[col].mean():.0f}\n"
+                # Lấy TOÀN BỘ dữ liệu từ file
+                all_csv_multi_summary += f"\nDỮ LIỆU CHI TIẾT (TOÀN BỘ {len(df)} DÒNG):\n{df.to_string()}\n"
+            except Exception as e:
+                st.error(f"❌ Lỗi đọc file {uploaded_file.name}: {e}")
+        
+        # Hiển thị tất cả tên file đã upload
+        if all_file_names_multi:
+            st.info(f"📋 Các file đã upload: {', '.join(all_file_names_multi)}")
+    
+    st.markdown("---")
+    
+    # Button phân tích
+    if st.button("🚀 So sánh tất cả", key="btn_multi_compare", type="primary"):
+        if my_shop_multi_input and all_csv_multi and len(all_csv_multi) >= 2:
+            with st.spinner(f"⏳ Đang phân tích {len(all_csv_multi)} quán..."):
+                try:
+                    # Gọi API phân tích với tên quán của mình
+                    result = analyze_multi_competitor_with_my_shop(my_shop_multi_input, all_csv_multi_summary)
+                    comparison_data = extract_multi_comparison_json(result)
+                    
+                    # Hiển thị các quán được phát hiện
+                    detected_shops = comparison_data.get("detected_shops", [])
+                    if detected_shops:
+                        st.success(f"🔍 AI đã nhận diện {len(detected_shops)} quán: {', '.join(detected_shops)}")
+                    
+                    # Dùng tên quán từ input
+                    my_shop_name = my_shop_multi_input
+                    
+                    # Hiển thị kết quả
+                    st.markdown("---")
+                    display_multi_comparison_charts(comparison_data, my_shop_name)
+                    
+                    # Phân tích chi tiết
+                    st.markdown("---")
+                    st.subheader("📋 Phân tích chi tiết")
+                    clean_text = clean_result_text(result)
+                    st.markdown(clean_text)
+                    
+                except Exception as e:
+                    st.error(f"❌ Lỗi: {e}")
+        else:
+            if not my_shop_multi_input:
+                st.warning("⚠️ Vui lòng nhập tên quán của bạn!")
+            elif not all_csv_multi or len(all_csv_multi) < 2:
+                st.warning("⚠️ Vui lòng upload ít nhất 2 file CSV để so sánh!")
+
+with tab6:
     st.subheader("🔍 Tìm kiếm chuyên sâu - Phân tích chi nhánh cụ thể")
     st.info("""
     **Khác biệt với phân tích thông thường:**

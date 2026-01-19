@@ -11,7 +11,7 @@ import google.generativeai as genai
 # ============================================
 # CẤU HÌNH API
 # ============================================
-GOOGLE_API_KEY = ""
+GOOGLE_API_KEY = "AIzaSyDw_uBs_QUItg2KqiQF9cMu6pHW--pvJR8"
 genai.configure(api_key=GOOGLE_API_KEY)
 
 # Khởi tạo model
